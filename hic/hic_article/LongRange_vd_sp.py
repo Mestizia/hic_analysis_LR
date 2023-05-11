@@ -19,6 +19,37 @@ from scipy.stats import ttest_1samp
 from statsmodels.stats.weightstats import ztest
 import argparse
 
+def commandLineParser():
+    '''
+    Parses input and holds default values.
+    Returns a dictionary with all the parameters for the wrapper
+    '''
+    parser = argparse.ArgumentParser(description='Pipeline for Hic analysis related to "Three-dimensional chromatin organization promotes genome evolution in a fungal plant pathogen"')
+    local = os.getcwd()
+    #General argnuments to specify where to put/find files
+    parser.add_argument('-cb', '--centromereBedDir', type=str, required=True, help='path to the folder with the bed files containing the centromere coordinates. Bed files baseName should match the genome id')
+    parser.add_argument('-sd', '--syntenyDir', type=str, required=False, default=False, help='path to the folder with the bed files containing the synteny coordinates. Bed files name should follow the notation /path/to/directory/{genomeID}_merged_dist{mergingDistanceBasePairs}_size{minimalSizeAfterMerge}.bed')
+    parser.add_argument('-sf', '--syntenyFiles', type=str, required=False, default=False, help='comma separated list of the paths to the the bed files containing the synteny coordinates.')
+    parser.add_argument('-asd', '--AGRSyntenyDir', type=str, required=False, default=False, help='path to the folder with the bed files containing the AGR coordinates in the different genomes. Bed files name should follow the notation /path/to/directory/{genomeID}_merged_dist{mergingDistanceBasePairs}_size{minimalSizeAfterMerge}.bed')
+    parser.add_argument('-asf', '--AGRSyntenyFiles', type=str, required=False, default=False, help='comma separated list of the paths to the the bed files containing the AGR coordinates in the different genomes.')
+    parser.add_argument('-agr', '--JR2AGR', type=str, required=True, help='path to the bed file containing JR2 agr coordinates')
+    parser.add_argument('-ug', '--unmaskedGenomeDir', type=str, required=True, help='path to the unmasked genome directory.')
+    parser.add_argument('-mg', '--maskedGenomeDir', type=str, required=True, help='path to the masked genome directory.')
+    parser.add_argument('-sm', '--selfMapping', type=str, required=True, help='path to the directory containing the genome self mapping for duplication detection.')
+    parser.add_argument('-op', '--outputPlots', type=str, required=True, help='path to the directory to place the figures. It will be created if it does not exist.')
+    parser.add_argument('-oe', '--observedExpectedTsv', type=str, required=True, help='path to the observed/expected tsv file folder')
+    parser.add_argument('-rg', '--referenceObsExp', type=str, required=True, help='path to the expected observed tsv file for the reference genome.')
+    parser.add_argument('-rb', '--referenceBins', type=str, required=True, help='path to the bed file containing the bins start-end position for the reference genome.')
+    parser.add_argument('-rba', '--referenceBinsAnnotation', type=str, required=True, help='path to the tsv file containing the bins annotation for the reference genome.')
+    parser.add_argument('-rc', '--referenceCentromeres', type=str, required=True, help='path to the bed file containing the bins start-end position for the reference centromeres.')
+    parser.add_argument('-ga', '--geneAnnotation', type=str, required=True, help='path to the csv file containing the gene annotation for the reference genome.')
+    parser.add_argument('-te', '--teFile', type=str, required=True, help='path to the csv file containing the TE annotation for the reference genome.')
+    parser.add_argument('-ed', '--epigeneticDir', type=str, required=True, help='path to the folder containing the epigenetics PEAK files for the reference genome.')
+    parser.add_argument('-d', '--distance', type=int, required=True, help='distance in base pairs that determines whether a duplication is located near a colocalization event.')
+    parser.add_argument('-o', '--outputDir', type=str, required=True, default=local, help='Main output path, generates different subfolders to organize output files.')
+    parser.add_argument('-v', '--verbose', required=False, default=False, action='store_true', help='Set verbosity while running')
+    return vars(parser.parse_args())
+
 def make_2d(df, bins, binID, outputDir, referenceSampleName):
     # create a dictionary to store the data
     df_dict = {}
@@ -73,6 +104,7 @@ def get_LR_bins(bins):
             # check if other bins on the chromosome are far enough [threshold=3000]. If so, classify they as long range
             bin2start = int(bin2.split('_')[1])
             bin2end = int(bin2.split('_')[-1])
+            #30kb threshold is the accepted threshold for long range interactions
             if abs(binstart - bin2end) > 30000:
                 cis_LR_list.append(bin2)
             elif abs(binend - bin2start) > 30000:
@@ -1872,7 +1904,7 @@ def plot_genes(genes_full, filt_LR_df, bin_annot):
         plt.title(bintype)
         plt.show()
 
-def get_distance_from_dup(stA, enA, chrA, stB, enB, chrB, dups):
+def get_distance_from_dup(stA, enA, chrA, stB, enB, chrB, dups, distance):
     #print (dups)
 
     stA = int(stA); enA = int(enA);
@@ -1895,20 +1927,20 @@ def get_distance_from_dup(stA, enA, chrA, stB, enB, chrB, dups):
                 match.append(dup_i)
                 step.append(1)
 
-            if abs(stB - chr_dups.loc[dup_i, 'que_start']) < abs(50000) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
+            if abs(stB - chr_dups.loc[dup_i, 'que_start']) < abs(distance) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
                 dist1.append(0)
                 dist2.append(stB - chr_dups.loc[dup_i, 'que_start'])
                 match.append(dup_i)
                 step.append(2)
 
-            if abs(chr_dups.loc[dup_i, 'que_stop'] - enB) < abs(50000) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
+            if abs(chr_dups.loc[dup_i, 'que_stop'] - enB) < abs(distance) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
                 dist1.append(0)
                 dist2.append(enB - chr_dups.loc[dup_i, 'que_stop'])
                 match.append(dup_i)
                 step.append(3)
 
         #check if it's close to the start
-        if abs(stA - chr_dups.loc[dup_i, 'ref_start']) < abs(50000) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
+        if abs(stA - chr_dups.loc[dup_i, 'ref_start']) < abs(distance) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
             if enB > chr_dups.loc[dup_i, 'que_start'] and enB < chr_dups.loc[dup_i, 'que_stop']:
                 #other bin also in the other dup
                 dist1.append(stA - chr_dups.loc[dup_i, 'ref_start'])
@@ -1916,20 +1948,20 @@ def get_distance_from_dup(stA, enA, chrA, stB, enB, chrB, dups):
                 match.append(dup_i)
                 step.append(4)
 
-            if abs(stB - chr_dups.loc[dup_i, 'que_start']) < abs(50000) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
+            if abs(stB - chr_dups.loc[dup_i, 'que_start']) < abs(distance) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
                 dist1.append(stA - chr_dups.loc[dup_i, 'ref_start'])
                 dist2.append(stB - chr_dups.loc[dup_i, 'que_start'])
                 match.append(dup_i)
                 step.append(5)
 
-            if abs(chr_dups.loc[dup_i, 'que_stop'] - enB) < abs(50000) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
+            if abs(chr_dups.loc[dup_i, 'que_stop'] - enB) < abs(distance) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
                 dist1.append(stA - chr_dups.loc[dup_i, 'ref_start'])
                 dist2.append(enB - chr_dups.loc[dup_i, 'que_stop'])
                 match.append(dup_i)
                 step.append(6)
 
         #check if it's close to the end
-        if abs(chr_dups.loc[dup_i, 'ref_stop'] - enA) < abs(50000) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
+        if abs(chr_dups.loc[dup_i, 'ref_stop'] - enA) < abs(distance) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
             if enB > chr_dups.loc[dup_i, 'que_start'] and enB < chr_dups.loc[dup_i, 'que_stop']:
                 #other bin also in the other dup
                 dist1.append(chr_dups.loc[dup_i, 'ref_stop'] - enA)
@@ -1937,13 +1969,13 @@ def get_distance_from_dup(stA, enA, chrA, stB, enB, chrB, dups):
                 match.append(dup_i)
                 step.append(7)
 
-            if abs(stB - chr_dups.loc[dup_i, 'que_start']) < abs(50000) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
+            if abs(stB - chr_dups.loc[dup_i, 'que_start']) < abs(distance) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
                 dist1.append(chr_dups.loc[dup_i, 'ref_stop'] - enA)
                 dist2.append(stB - chr_dups.loc[dup_i, 'que_start'])
                 match.append(dup_i)
                 step.append(8)
 
-            if abs(chr_dups.loc[dup_i, 'que_stop'] - enB) < abs(50000) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
+            if abs(chr_dups.loc[dup_i, 'que_stop'] - enB) < abs(distance) and chr_dups.loc[dup_i, 'que_chr'] == chrB:
                 dist1.append(chr_dups.loc[dup_i, 'ref_stop'] - enA)
                 dist2.append(enB - chr_dups.loc[dup_i, 'que_stop'])
                 match.append(dup_i)
@@ -1961,20 +1993,20 @@ def get_distance_from_dup(stA, enA, chrA, stB, enB, chrB, dups):
                 match.append(dup_i)
                 step.append(10)
 
-            if abs(stB - chr_dups.loc[dup_i, 'que_start']) < abs(50000):
+            if abs(stB - chr_dups.loc[dup_i, 'que_start']) < abs(distance):
                 dist1.append(0)
                 dist2.append(stB - chr_dups.loc[dup_i, 'que_start'])
                 match.append(dup_i)
                 step.append(11)
 
-            if abs(chr_dups.loc[dup_i, 'que_stop'] - enB) < abs(50000):
+            if abs(chr_dups.loc[dup_i, 'que_stop'] - enB) < abs(distance):
                 dist1.append(0)
                 dist2.append(enB - chr_dups.loc[dup_i, 'que_stop'])
                 match.append(dup_i)
                 step.append(12)
 
         #check if it's close to the start
-        if abs(stA - chr_dups.loc[dup_i, 'ref_start']) < abs(50000) and dups.loc[dup_i, 'ref_chr'] == chrA:
+        if abs(stA - chr_dups.loc[dup_i, 'ref_start']) < abs(distance) and dups.loc[dup_i, 'ref_chr'] == chrA:
             if enB > chr_dups.loc[dup_i, 'que_start'] and enB < chr_dups.loc[dup_i, 'que_stop']:
                 #other bin also in the other dup
                 dist1.append(stA - chr_dups.loc[dup_i, 'ref_start'])
@@ -1982,20 +2014,20 @@ def get_distance_from_dup(stA, enA, chrA, stB, enB, chrB, dups):
                 match.append(dup_i)
                 step.append(13)
 
-            if abs(stB - chr_dups.loc[dup_i, 'que_start']) < abs(50000):
+            if abs(stB - chr_dups.loc[dup_i, 'que_start']) < abs(distance):
                 dist1.append(stA - chr_dups.loc[dup_i, 'ref_start'])
                 dist2.append(stB - chr_dups.loc[dup_i, 'que_start'])
                 match.append(dup_i)
                 step.append(14)
 
-            if abs(chr_dups.loc[dup_i, 'que_stop'] - enB) < abs(50000):
+            if abs(chr_dups.loc[dup_i, 'que_stop'] - enB) < abs(distance):
                 dist1.append(stA - chr_dups.loc[dup_i, 'ref_start'])
                 dist2.append(enB - chr_dups.loc[dup_i, 'que_stop'])
                 match.append(dup_i)
                 step.append(15)
 
         #check if it's close to the end
-        if abs(chr_dups.loc[dup_i, 'ref_stop'] - enA) < abs(50000) and dups.loc[dup_i, 'ref_chr'] == chrA:
+        if abs(chr_dups.loc[dup_i, 'ref_stop'] - enA) < abs(distance) and dups.loc[dup_i, 'ref_chr'] == chrA:
             if enB > chr_dups.loc[dup_i, 'que_start'] and enB < chr_dups.loc[dup_i, 'que_stop']:
                 #other bin also in the other dup
                 dist1.append(chr_dups.loc[dup_i, 'ref_stop'] - enA)
@@ -2003,20 +2035,20 @@ def get_distance_from_dup(stA, enA, chrA, stB, enB, chrB, dups):
                 match.append(dup_i)
                 step.append(16)
 
-            if abs(stB - chr_dups.loc[dup_i, 'que_start']) < abs(50000):
+            if abs(stB - chr_dups.loc[dup_i, 'que_start']) < abs(distance):
                 dist1.append(chr_dups.loc[dup_i, 'ref_stop'] - enA)
                 dist2.append(stB - chr_dups.loc[dup_i, 'que_start'])
                 match.append(dup_i)
                 step.append(17)
 
-            if abs(chr_dups.loc[dup_i, 'que_stop'] - enB) < abs(50000):
+            if abs(chr_dups.loc[dup_i, 'que_stop'] - enB) < abs(distance):
                 dist1.append(chr_dups.loc[dup_i, 'ref_stop'] - enA)
                 dist2.append(enB - chr_dups.loc[dup_i, 'que_stop'])
                 match.append(dup_i)
                 step.append(18)
 
     if match:
-        best = 1000000
+        best = distance*2
 
         for m in range(len(match)):
             if (abs(dist1[m])+abs(dist2[m]))/2 < best:
@@ -2045,7 +2077,7 @@ def association_with_dist(filt_LR_df, dups):
             chr2 = bin2.split("_")[0]
             start2 = bin2.split("_")[1]
             end2 = bin2.split("_")[2]
-            best_match, distance = get_distance_from_dup(start1, end1, chr1, start2, end2, chr2, dups)
+            best_match, distance = get_distance_from_dup(start1, end1, chr1, start2, end2, chr2, dups, commandLineArgs['distance'])
 
             if np.any(best_match):
                 dup1 = '{}_{}_{}'.format(best_match.loc['ref_chr'], best_match.loc['ref_start'], best_match.loc['ref_stop'])
@@ -2093,7 +2125,7 @@ def association_with_dist_core(filt_LR_df, dups):
                 chr2 = bin2.split("_")[0]
                 start2 = bin2.split("_")[1]
                 end2 = bin2.split("_")[2]
-                best_match, distance = get_distance_from_dup(start1, end1, chr1, start2, end2, chr2, dups)
+                best_match, distance = get_distance_from_dup(start1, end1, chr1, start2, end2, chr2, dups, commandLineArgs['distance'])
 
                 if np.any(best_match):
                     dup1 = '{}_{}_{}'.format(best_match.loc['ref_chr'], best_match.loc['ref_start'], best_match.loc['ref_stop'])
@@ -2142,7 +2174,7 @@ def association_with_dist_AGR(filt_LR_df, dups):
                 chr2 = bin2.split("_")[0]
                 start2 = bin2.split("_")[1]
                 end2 = bin2.split("_")[2]
-                best_match, distance = get_distance_from_dup(start1, end1, chr1, start2, end2, chr2, dups)
+                best_match, distance = get_distance_from_dup(start1, end1, chr1, start2, end2, chr2, dups, commandLineArgs['distance'])
 
                 if np.any(best_match):
                     dup1 = '{}_{}_{}'.format(best_match.loc['ref_chr'], best_match.loc['ref_start'], best_match.loc['ref_stop'])
@@ -2197,38 +2229,7 @@ def get_vdls17_genes(binID):
                 gene_count_df.loc[B[0], 'gene_density'] += 1
     print (gene_count_df)
     gene_count_df.to_csv('gene_count_vdls17.csv',sep='\t')
-
-
-
-def commandLineParser():
-    '''
-    Parses input and holds default values.
-    Returns a dictionary with all the parameters for the wrapper
-    '''
-    parser = argparse.ArgumentParser(description='Pipeline for Hic analysis related to "Three-dimensional chromatin organization promotes genome evolution in a fungal plant pathogen"')
-    local = os.getcwd()
-    #General argnuments to specify where to put/find files
-    parser.add_argument('-cb', '--centromereBedDir', type=str, required=True, help='path to the folder with the bed files containing the centromere coordinates. Bed files baseName should match the genome id')
-    parser.add_argument('-sd', '--syntenyDir', type=str, required=False, default=False, help='path to the folder with the bed files containing the synteny coordinates. Bed files name should follow the notation /path/to/directory/{genomeID}_merged_dist{mergingDistanceBasePairs}_size{minimalSizeAfterMerge}.bed')
-    parser.add_argument('-sf', '--syntenyFiles', type=str, required=False, default=False, help='comma separated list of the paths to the the bed files containing the synteny coordinates.')
-    parser.add_argument('-asd', '--AGRSyntenyDir', type=str, required=False, default=False, help='path to the folder with the bed files containing the AGR coordinates in the different genomes. Bed files name should follow the notation /path/to/directory/{genomeID}_merged_dist{mergingDistanceBasePairs}_size{minimalSizeAfterMerge}.bed')
-    parser.add_argument('-asf', '--AGRSyntenyFiles', type=str, required=False, default=False, help='comma separated list of the paths to the the bed files containing the AGR coordinates in the different genomes.')
-    parser.add_argument('-agr', '--JR2AGR', type=str, required=True, help='path to the bed file containing JR2 agr coordinates')
-    parser.add_argument('-ug', '--unmaskedGenomeDir', type=str, required=True, help='path to the unmasked genome directory.')
-    parser.add_argument('-mg', '--maskedGenomeDir', type=str, required=True, help='path to the masked genome directory.')
-    parser.add_argument('-sm', '--selfMapping', type=str, required=True, help='path to the directory containing the genome self mapping for duplication detection.')
-    parser.add_argument('-op', '--outputPlots', type=str, required=True, help='path to the directory to place the figures. It will be created if it does not exist.')
-    parser.add_argument('-oe', '--observedExpectedTsv', type=str, required=True, help='path to the observed/expected tsv file folder')
-    parser.add_argument('-rg', '--referenceObsExp', type=str, required=True, help='path to the expected observed tsv file for the reference genome.')
-    parser.add_argument('-rb', '--referenceBins', type=str, required=True, help='path to the bed file containing the bins start-end position for the reference genome.')
-    parser.add_argument('-rba', '--referenceBinsAnnotation', type=str, required=True, help='path to the tsv file containing the bins annotation for the reference genome.')
-    parser.add_argument('-rc', '--referenceCentromeres', type=str, required=True, help='path to the bed file containing the bins start-end position for the reference centromeres.')
-    parser.add_argument('-ga', '--geneAnnotation', type=str, required=True, help='path to the csv file containing the gene annotation for the reference genome.')
-    parser.add_argument('-te', '--teFile', type=str, required=True, help='path to the csv file containing the TE annotation for the reference genome.')
-    parser.add_argument('-ed', '--epigeneticDir', type=str, required=True, help='path to the folder containing the epigenetics PEAK files for the reference genome.')
-    parser.add_argument('-o', '--outputDir', type=str, required=True, default=local, help='Main output path, generates different subfolders to organize output files.')
-    parser.add_argument('-v', '--verbose', required=False, default=False, action='store_true', help='Set verbosity while running')
-    return vars(parser.parse_args())
+    return
 
 def parse_command_line_args(commandLineArgs):
     #check if all the variables are provided and parse the output
